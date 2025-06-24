@@ -1,0 +1,31 @@
+{
+    "print_freq": 200,
+    "batch_size": 64,
+    "num_workers": 8,
+    "epochs": 240,
+    "gpu_id": 0,
+    "learning_rate": 0.05,
+    "lr_decay_epochs": [
+        150,
+        180,
+        210
+    ],
+    "lr_decay_rate": 0.1,
+    "weight_decay": 0.0005,
+    "momentum": 0.9,
+    "model": "vgg8",
+    "dataset": "cinic10",
+    "trial": "0",
+    "dali": null,
+    "multiprocessing_distributed": false,
+    "dist_url": "tcp://127.0.0.1:23451",
+    "model_path": "./save/teachers/models",
+    "tb_path": "./save/teachers/tensorboard",
+    "model_name": "vgg8_vanilla_cinic10_trial_0_epochs_240_bs_64",
+    "tb_folder": "./save/teachers/tensorboard\\vgg8_vanilla_cinic10_trial_0_epochs_240_bs_64",
+    "save_folder": "./save/teachers/models\\vgg8_vanilla_cinic10_trial_0_epochs_240_bs_64",
+    "ngpus_per_node": 1,
+    "gpu": 0,
+    "Total params": 3.918858,
+    "Total time": 8.28
+}
