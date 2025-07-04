@@ -27,10 +27,12 @@ from dataset.imagenet import get_imagenet_dataloader,  get_dataloader_sample
 from dataset.cinic10 import get_cinic10_dataloaders, get_cinic10_dataloaders_sample
 
 from helper.loops import train_distill as train, validate_vanilla, validate_distill
-from helper.util import get_layer_indices_by_type, select_feats_by_indices, save_dict_to_json, reduce_tensor, adjust_learning_rate
+from helper.util import save_dict_to_json, reduce_tensor, adjust_learning_rate
 from helper.cka_mapper import CKAMapper
 
-from distiller_zoo import DistillKL, CKADistillLoss
+from crd.criterion import CRDLoss
+from distiller_zoo import DistillKL, HintLoss, Attention, Similarity, VIDLoss, SemCKDLoss, CKADistillLoss
+
 
 
 split_symbol = '~' if os.name == 'nt' else ':'
@@ -61,7 +63,8 @@ def parse_option():
     # distillation
     parser.add_argument('--trial', type=str, default='1', help='trial id')
     parser.add_argument('--kd_T', type=float, default=4, help='temperature for KD distillation')
-    parser.add_argument('--distill', type=str, default='kd', choices=['kd', 'CKAD'])
+    parser.add_argument('--distill', type=str, default='kd', choices=['kd', 'hint', 'attention', 'similarity', 'vid',
+                                                                      'semckd','srrl', 'simkd', 'ours'])
     parser.add_argument('-c', '--cls', type=float, default=1.0, help='weight for classification')
     parser.add_argument('-d', '--div', type=float, default=1.0, help='weight balance for KD')
     parser.add_argument('-b', '--beta', type=float, default=0.0, help='weight balance for other losses')
@@ -204,25 +207,6 @@ def main_worker(gpu, ngpus_per_node, opt):
         'imagenet': 1000,
         'cinic10': 10
     }.get(opt.dataset, None)
-
-
-    # dataloader
-    if opt.dataset == 'cifar100':
-        train_loader, val_loader = get_cifar100_dataloaders(batch_size=opt.batch_size,
-                                                                        num_workers=opt.num_workers)
-    elif opt.dataset == 'cifar10':
-        train_loader, val_loader = get_cifar10_dataloaders(batch_size=opt.batch_size,
-                                                                        num_workers=opt.num_workers)
-    elif opt.dataset == 'imagenet':
-        train_loader, val_loader, train_sampler = get_imagenet_dataloader(dataset=opt.dataset, batch_size=opt.batch_size,
-                                                                        num_workers=opt.num_workers,
-                                                                        multiprocessing_distributed=opt.multiprocessing_distributed)
-    elif opt.dataset == 'cinic10':
-        train_loader, val_loader = get_cinic10_dataloaders(batch_size=opt.batch_size,
-                                                                        num_workers=opt.num_workers)
-    else:
-        raise NotImplementedError(opt.dataset)
-    
     
     model_t = load_teacher(opt.path_t, n_cls, opt.gpu, opt)
     try:
@@ -230,34 +214,15 @@ def main_worker(gpu, ngpus_per_node, opt):
     except KeyError:
         print("This model is not supported.")
 
+    if opt.dataset == 'cifar100' or opt.dataset == 'cifar10' or opt.dataset == 'cinic10':
+        data = torch.randn(2, 3, 32, 32)
+    elif opt.dataset == 'imagenet':
+        data = torch.randn(2, 3, 224, 224)
+
     model_t.eval()
     model_s.eval()
-
-
-
-    # dataをモデルに通して特徴量を取得
-    # feat_t = [
-    #     torch.Size([2, 128, 8, 8]),
-    #     torch.Size([2, 256, 4, 4]),
-    #     torch.Size([2, 512, 2, 2]),
-    #     ...
-    # ]
-
-    # ランダムなデータを使って特徴量を取得する例
-    # if opt.dataset == 'cifar100' or opt.dataset == 'cifar10' or opt.dataset == 'cinic10':
-    #     data = torch.randn(2, 3, 32, 32)
-    # elif opt.dataset == 'imagenet':
-    #     data = torch.randn(2, 3, 224, 224)  # get features    
-    # feat_t, _ = model_t(data, is_feat=True)
-    # feat_s, _ = model_s(data, is_feat=True)
-
-    # 1バッチの画像を使って特徴量を取得
-    # 例：cifar10の場合 64枚の画像を使って特徴量を取得
-    for images, labels in train_loader:
-        feat_t, _ = model_t(images, is_feat=True)
-        feat_s, _ = model_s(images, is_feat=True)
-        # ...CKA計算に使う...
-        break
+    feat_t, _ = model_t(data, is_feat=True)
+    feat_s, _ = model_s(data, is_feat=True)
 
     module_list = nn.ModuleList([])
     module_list.append(model_s)
@@ -268,31 +233,36 @@ def main_worker(gpu, ngpus_per_node, opt):
     criterion_div = DistillKL(opt.kd_T)
     if opt.distill == 'kd':
         criterion_kd = DistillKL(opt.kd_T)
+    elif opt.distill == 'hint':
+        criterion_kd = HintLoss()
+        regress_s = ConvReg(feat_s[opt.hint_layer].shape, feat_t[opt.hint_layer].shape)
+        module_list.append(regress_s)
+        trainable_list.append(regress_s)
+    elif opt.distill == 'attention':
+        criterion_kd = Attention()
+    elif opt.distill == 'similarity':
+        criterion_kd = Similarity()
+    elif opt.distill == 'semckd':
+        s_n = [f.shape[1] for f in feat_s[1:-1]]
+        t_n = [f.shape[1] for f in feat_t[1:-1]]
+        criterion_kd = SemCKDLoss()
+        self_attention = SelfA(opt.batch_size, s_n, t_n, opt.soft)    
+        module_list.append(self_attention)
+        trainable_list.append(self_attention)
+    elif opt.distill == 'simkd':
+        s_n = feat_s[-2].shape[1]
+        t_n = feat_t[-2].shape[1]
+        model_simkd = SimKD(s_n= s_n, t_n=t_n, factor=opt.factor)
+        criterion_kd = nn.MSELoss()
+        module_list.append(model_simkd)
+        trainable_list.append(model_simkd)
     elif opt.distill == 'CKAD':
-        # 特定の層を選択するためのインデックスを取得
-        layer_types = (nn.BatchNorm2d, nn.Linear)
-        t_indices = get_layer_indices_by_type(model_t, layer_types)
-        s_indices = get_layer_indices_by_type(model_s, layer_types)
-
-        # 特定の層の特徴量を選択
-        feat_t_selected = select_feats_by_indices(feat_t, t_indices)
-        feat_s_selected = select_feats_by_indices(feat_s, s_indices)
-
-        # 特徴量の形状を取得
-        # t_shapesとs_shapesは以下のようなリストになる
-        # [
-        #     torch.Size([バッチサイズ, チャンネル数1, 高さ1, 幅1]),
-        #     torch.Size([バッチサイズ, チャンネル数2, 高さ2, 幅2]),
-        # ...
-        # ]
-        t_shapes = [f.shape for f in feat_t_selected]
-        s_shapes = [f.shape for f in feat_s_selected]
-
+        # グループ分けやCKA損失計算を行うクラスを用意（例: CKAMapper, CKADistillLoss）
+        s_shapes = [f.shape for f in feat_s]
+        t_shapes = [f.shape for f in feat_t]
+    
         # CKAグループ対応モジュール
-        cka_mapper = CKAMapper(
-            s_shapes, t_shapes, group_num=opt.group_num,
-            feat_t=feat_t_selected
-        )
+        cka_mapper = CKAMapper(s_shapes, t_shapes, group_num=opt.group_num)
         module_list.append(cka_mapper)
         trainable_list.append(cka_mapper)
     
@@ -335,6 +305,22 @@ def main_worker(gpu, ngpus_per_node, opt):
         if not opt.deterministic:
             cudnn.benchmark = True
 
+    # dataloader
+    if opt.dataset == 'cifar100':
+        train_loader, val_loader = get_cifar100_dataloaders(batch_size=opt.batch_size,
+                                                                        num_workers=opt.num_workers)
+    elif opt.dataset == 'cifar10':
+        train_loader, val_loader = get_cifar10_dataloaders(batch_size=opt.batch_size,
+                                                                        num_workers=opt.num_workers)
+    elif opt.dataset == 'imagenet':
+        train_loader, val_loader, train_sampler = get_imagenet_dataloader(dataset=opt.dataset, batch_size=opt.batch_size,
+                                                                        num_workers=opt.num_workers,
+                                                                        multiprocessing_distributed=opt.multiprocessing_distributed)
+    elif opt.dataset == 'cinic10':
+        train_loader, val_loader = get_cinic10_dataloaders(batch_size=opt.batch_size,
+                                                                        num_workers=opt.num_workers)
+    else:
+        raise NotImplementedError(opt.dataset)
 
     if not opt.multiprocessing_distributed or opt.rank % ngpus_per_node == 0:
         writer = SummaryWriter(log_dir=opt.tb_folder, flush_secs=2)

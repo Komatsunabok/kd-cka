@@ -314,3 +314,4 @@ def validate_distill(val_loader, module_list, criterion, opt):
         return ret
 
     return top1.avg, top5.avg, losses.avg
+

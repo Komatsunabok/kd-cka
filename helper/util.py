@@ -5,6 +5,22 @@ import torch
 import numpy as np
 import torch.distributed as dist
 
+def get_layer_indices_by_type(model, layer_types):
+    """
+    モデルから指定した型(layer_types)の層インデックスをリストで返す
+    """
+    indices = []
+    for idx, m in enumerate(model.modules()):
+        if isinstance(m, layer_types):
+            indices.append(idx)
+    return indices
+
+def select_feats_by_indices(feats, indices):
+    """
+    featsリストから指定インデックスだけ抽出
+    """
+    return [feats[i] for i in indices]
+
 def adjust_learning_rate(epoch, opt, optimizer):
     """Sets the learning rate to the initial LR decayed by decay rate every steep step"""
     steps = np.sum(epoch > np.asarray(opt.lr_decay_epochs))
