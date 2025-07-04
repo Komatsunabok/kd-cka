@@ -1,6 +1,15 @@
 # モデル構造一覧
+| 層タイプ                | 役割                              | 学習するパラメータ       | 出力形状への影響                 |
+| ------------------- | ------------------------------- | --------------- | ------------------------ |
+| `Conv2d`            | 画像から**特徴（エッジ・模様など）を抽出**する       | ✅ あり（カーネル）      | 空間サイズ（高さ×幅）を減らす／変えることもある |
+| `BatchNorm2d`       | 各層の出力を**正規化して学習を安定化**させる        | ✅ あり（スケール・バイアス） | 出力サイズは変えない               |
+| `ReLU`              | **非線形変換**を加える（活性化関数）            | ❌ なし            | 出力サイズは変えない               |
+| `MaxPool2d`         | 空間領域を\*\*縮小（ダウンサンプリング）\*\*する    | ❌ なし            | 高さ・幅が小さくなる               |
+| `AdaptiveAvgPool2d` | 出力の空間サイズを**任意のサイズに平均プーリング**で変える | ❌ なし            | 指定サイズに変わる                |
+| `Linear`            | **全結合層**：特徴ベクトルからクラスなどを予測       | ✅ あり（重み・バイアス）   | ベクトルの形に変換                |
 
-## vgg8
+
+### vgg8
 
 | 層番号 | 層タイプ           | 出力サイズ                |
 |--------|-------------------|---------------------------|
@@ -24,7 +33,7 @@
 | 17      | AdaptiveAvgPool2d | torch.Size([1, 512, 1, 1]) |
 | 18      | Linear            | torch.Size([1, 10]) |
 
-## vgg13
+### vgg13
 
 | 層番号 | 層タイプ           | 出力サイズ                |
 |--------|-------------------|---------------------------|
@@ -63,7 +72,55 @@
 | 32      | AdaptiveAvgPool2d | torch.Size([1, 512, 1, 1]) |
 | 33      | Linear            | torch.Size([1, 10]) |
 
-## resnet8x4
+### vgg16
+
+| 層番号 | 層タイプ           | 出力サイズ                |
+|--------|-------------------|---------------------------|
+| 0      | Conv2d            | torch.Size([1, 64, 32, 32]) |
+| 1      | BatchNorm2d       | torch.Size([1, 64, 32, 32]) |
+| 2      | ReLU              | torch.Size([1, 64, 32, 32]) |
+| 3      | Conv2d            | torch.Size([1, 64, 32, 32]) |
+| 4      | BatchNorm2d       | torch.Size([1, 64, 32, 32]) |
+| 5      | MaxPool2d         | torch.Size([1, 64, 16, 16]) |
+| 6      | Conv2d            | torch.Size([1, 128, 16, 16]) |
+| 7      | BatchNorm2d       | torch.Size([1, 128, 16, 16]) |
+| 8      | ReLU              | torch.Size([1, 128, 16, 16]) |
+| 9      | Conv2d            | torch.Size([1, 128, 16, 16]) |
+| 10      | BatchNorm2d       | torch.Size([1, 128, 16, 16]) |
+| 11      | ReLU              | torch.Size([1, 128, 16, 16]) |
+| 12      | MaxPool2d         | torch.Size([1, 128, 8, 8]) |
+| 13      | Conv2d            | torch.Size([1, 256, 8, 8]) |
+| 14      | BatchNorm2d       | torch.Size([1, 256, 8, 8]) |
+| 15      | ReLU              | torch.Size([1, 256, 8, 8]) |
+| 16      | Conv2d            | torch.Size([1, 256, 8, 8]) |
+| 17      | BatchNorm2d       | torch.Size([1, 256, 8, 8]) |
+| 18      | ReLU              | torch.Size([1, 256, 8, 8]) |
+| 19      | Conv2d            | torch.Size([1, 256, 8, 8]) |
+| 20      | BatchNorm2d       | torch.Size([1, 256, 8, 8]) |
+| 21      | ReLU              | torch.Size([1, 256, 8, 8]) |
+| 22      | MaxPool2d         | torch.Size([1, 256, 4, 4]) |
+| 23      | Conv2d            | torch.Size([1, 512, 4, 4]) |
+| 24      | BatchNorm2d       | torch.Size([1, 512, 4, 4]) |
+| 25      | ReLU              | torch.Size([1, 512, 4, 4]) |
+| 26      | Conv2d            | torch.Size([1, 512, 4, 4]) |
+| 27      | BatchNorm2d       | torch.Size([1, 512, 4, 4]) |
+| 28      | ReLU              | torch.Size([1, 512, 4, 4]) |
+| 29      | Conv2d            | torch.Size([1, 512, 4, 4]) |
+| 30      | BatchNorm2d       | torch.Size([1, 512, 4, 4]) |
+| 31      | ReLU              | torch.Size([1, 512, 4, 4]) |
+| 32      | Conv2d            | torch.Size([1, 512, 4, 4]) |
+| 33      | BatchNorm2d       | torch.Size([1, 512, 4, 4]) |
+| 34      | ReLU              | torch.Size([1, 512, 4, 4]) |
+| 35      | Conv2d            | torch.Size([1, 512, 4, 4]) |
+| 36      | BatchNorm2d       | torch.Size([1, 512, 4, 4]) |
+| 37      | ReLU              | torch.Size([1, 512, 4, 4]) |
+| 38      | Conv2d            | torch.Size([1, 512, 4, 4]) |
+| 39      | BatchNorm2d       | torch.Size([1, 512, 4, 4]) |
+| 40      | ReLU              | torch.Size([1, 512, 4, 4]) |
+| 41      | AdaptiveAvgPool2d | torch.Size([1, 512, 1, 1]) |
+| 42      | Linear            | torch.Size([1, 10]) |
+
+### resnet8x4
 
 | 層番号 | 層タイプ           | 出力サイズ                |
 |--------|-------------------|---------------------------|
@@ -100,7 +157,7 @@
 | 30      | AdaptiveAvgPool2d | torch.Size([1, 256, 1, 1]) |
 | 31      | Linear            | torch.Size([1, 10]) |
 
-## resnet38
+### resnet38
 
 | 層番号 | 層タイプ           | 出力サイズ                |
 |--------|-------------------|---------------------------|
@@ -240,7 +297,7 @@
 | 133      | AdaptiveAvgPool2d | torch.Size([1, 64, 1, 1]) |
 | 134      | Linear            | torch.Size([1, 10]) |
 
-## resnet38x4
+### resnet38x4
 
 | 層番号 | 層タイプ           | 出力サイズ                |
 |--------|-------------------|---------------------------|

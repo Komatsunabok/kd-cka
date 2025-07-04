@@ -42,7 +42,7 @@ if __name__ == "__main__":
         f.write("# モデル構造一覧\n\n")
         for model, layer_lines in tables:
             print(f"Processing model: {model}")
-            f.write(f"## {model}\n\n")
+            f.write(f"### {model}\n\n")
             f.write(lines_to_table(layer_lines))
             f.write("\n")
 
