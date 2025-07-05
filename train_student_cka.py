@@ -61,7 +61,7 @@ def parse_option():
     # distillation
     parser.add_argument('--trial', type=str, default='1', help='trial id')
     parser.add_argument('--kd_T', type=float, default=4, help='temperature for KD distillation')
-    parser.add_argument('--distill', type=str, default='kd', choices=['kd', 'CKAD'])
+    parser.add_argument('--distill', type=str, default='kd', choices=['kd', 'ckad'])
     parser.add_argument('-c', '--cls', type=float, default=1.0, help='weight for classification')
     parser.add_argument('-d', '--div', type=float, default=1.0, help='weight balance for KD')
     parser.add_argument('-b', '--beta', type=float, default=0.0, help='weight balance for other losses')
@@ -268,7 +268,7 @@ def main_worker(gpu, ngpus_per_node, opt):
     criterion_div = DistillKL(opt.kd_T)
     if opt.distill == 'kd':
         criterion_kd = DistillKL(opt.kd_T)
-    elif opt.distill == 'CKAD':
+    elif opt.distill == 'ckad':
         # 特定の層を選択するためのインデックスを取得
         layer_types = (nn.BatchNorm2d, nn.Linear)
         t_indices = get_layer_indices_by_type(model_t, layer_types)
@@ -297,7 +297,7 @@ def main_worker(gpu, ngpus_per_node, opt):
         trainable_list.append(cka_mapper)
     
         # CKAベースの蒸留損失関数
-        criterion_kd = CKADistillLoss(group_num=opt.group_num, method='mean', reduction='sum')
+        criterion_kd = CKADistillLoss(group_num=opt.group_num, method_inner_group='mean', method_inter_group='sum')
     else:
         raise NotImplementedError(opt.distill)
 
@@ -367,6 +367,8 @@ def main_worker(gpu, ngpus_per_node, opt):
         print("==> training...")
 
         time1 = time.time()
+        # module_list：訓練時に使用するモデルやモジュールのリスト
+        # criterion_list：損失関数のリスト
         train_acc, train_acc_top5, train_loss = train(epoch, train_loader, module_list, criterion_list, optimizer, opt)
         time2 = time.time()
 

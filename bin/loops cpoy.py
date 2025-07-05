@@ -32,7 +32,6 @@ def train_vanilla(epoch, train_loader, model, criterion, optimizer, opt):
         # ===================forward=====================
         output = model(images)
         loss = criterion(output, labels)
-        # nn.Module(継承している)のforwardメソッドは自動的に呼び出されるので、明示的に呼び出す必要はない
         losses.update(loss.item(), images.size(0))
 
         # ===================Metrics=====================
@@ -86,22 +85,29 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
     end = time.time()
     for idx, data in enumerate(train_loader):
         if opt.dali is None:
-            images, labels = data
+            if opt.distill in ['crd']:
+                images, labels, index, contrast_idx = data
+            else:
+                images, labels = data
         else:
             images, labels = data[0]['data'], data[0]['label'].squeeze().long()
         
+        if opt.distill == 'semckd' and images.shape[0] < opt.batch_size:
+            continue
+
         if opt.gpu is not None:
             images = images.cuda(opt.gpu if opt.multiprocessing_distributed else 0, non_blocking=True)
         if torch.cuda.is_available():
             labels = labels.cuda(opt.gpu if opt.multiprocessing_distributed else 0, non_blocking=True)
-
+            if opt.distill in ['crd']:
+                index = index.cuda()
+                contrast_idx = contrast_idx.cuda()
 
         # ===================forward=====================
         feat_s, logit_s = model_s(images, is_feat=True)
         with torch.no_grad():
             feat_t, logit_t = model_t(images, is_feat=True)
-            feat_t = [f.detach() for f in feat_t] # テンソルをグラフから切り離して、以降の計算で勾配を計算しないようにする
-            # 教師モデルの特徴マップを使っても勾配が更新されないようにする
+            feat_t = [f.detach() for f in feat_t]
 
         cls_t = model_t.module.get_feat_modules()[-1] if opt.multiprocessing_distributed else model_t.get_feat_modules()[-1]
         
@@ -115,20 +121,36 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
         elif opt.distill == 'hint':
             f_s, f_t = module_list[1](feat_s[opt.hint_layer], feat_t[opt.hint_layer])
             loss_kd = criterion_kd(f_s, f_t)
-        elif opt.distill == 'ckad':
-            # グループ化（module_list[1]がCKAMapperの場合）
-            # 各グループごとにまとめた特徴マップのリスト（リストのリスト）
-            # s_group_feats = [
-            #     [feat_s[0], feat_s[1]],  # グループ1
-            #     [feat_s[2], feat_s[3]],  # グループ2
-            #     [feat_s[4], feat_s[5]],  # グループ3
-            #     [feat_s[6], feat_s[7]],  # グループ4
-            # ]
-            s_group_feats, t_group_feats = module_list[1](feat_s, feat_t)
-
-            # 損失計算
-            loss_kd = criterion_kd(s_group_feats, t_group_feats)
-
+        elif opt.distill == 'attention':
+            # include 1, exclude -1.
+            g_s = feat_s[1:-1]
+            g_t = feat_t[1:-1]
+            loss_group = criterion_kd(g_s, g_t)
+            loss_kd = sum(loss_group)
+        elif opt.distill == 'similarity':
+            g_s = [feat_s[-2]]
+            g_t = [feat_t[-2]]
+            loss_group = criterion_kd(g_s, g_t)
+            loss_kd = sum(loss_group)
+        elif opt.distill == 'vid':
+            g_s = feat_s[1:-1]
+            g_t = feat_t[1:-1]
+            loss_group = [c(f_s, f_t) for f_s, f_t, c in zip(g_s, g_t, criterion_kd)]
+            loss_kd = sum(loss_group)
+        elif opt.distill == 'crd':
+            f_s = feat_s[-1]
+            f_t = feat_t[-1]
+            loss_kd = criterion_kd(f_s, f_t, index, contrast_idx)
+        elif opt.distill == 'semckd':
+            s_value, f_target, weight = module_list[1](feat_s[1:-1], feat_t[1:-1])
+            loss_kd = criterion_kd(s_value, f_target, weight)                                                 
+        elif opt.distill == 'srrl':
+            trans_feat_s, pred_feat_s = module_list[1](feat_s[-1], cls_t)
+            loss_kd = criterion_kd(trans_feat_s, feat_t[-1]) + criterion_kd(pred_feat_s, logit_t)
+        elif opt.distill == 'simkd':
+            trans_feat_s, trans_feat_t, pred_feat_s = module_list[1](feat_s[-2], feat_t[-2], cls_t)
+            logit_s = pred_feat_s
+            loss_kd = criterion_kd(trans_feat_s, trans_feat_t)
         else:
             raise NotImplementedError(opt.distill)
 
@@ -292,4 +314,3 @@ def validate_distill(val_loader, module_list, criterion, opt):
         return ret
 
     return top1.avg, top5.avg, losses.avg
-

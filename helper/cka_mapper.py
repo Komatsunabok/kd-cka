@@ -11,7 +11,7 @@ class CKAMapper(nn.Module):
     """
     教師・生徒の特徴マップをグループ分けし、対応付けを管理するモジュール
     """
-    def __init__(self, s_shapes, t_shapes, group_num=4, feat_t=None, calc_cka=None):
+    def __init__(self, s_shapes, t_shapes, feat_t, group_num=4):
         super().__init__()
         self.s_shapes = s_shapes
         self.t_shapes = t_shapes
@@ -24,13 +24,10 @@ class CKAMapper(nn.Module):
         # 層インデックスをグループ数で分割したリスト
         # 例: s_shapes の長さが8（生徒の対象層が8個）、group_num=4 の場合
         # 　  self.s_groups == [[0, 1], [2, 3], [4, 5], [6, 7]]
-        if feat_t is not None and calc_cka is not None:
-            self.t_groups = self._split_groups_by_cka(feat_t, group_num, calc_cka)
-        else:
-            self.t_groups = self._split_groups(len(t_shapes), group_num)
+        self.t_groups = self._split_groups_by_cka(feat_t, group_num)
         self.s_groups = self._split_groups(len(s_shapes), group_num)
     
-    def _split_groups_by_cka(self, feat_t, group_num, calc_cka):
+    def _split_groups_by_cka(self, feat_t, group_num):
         # 1. CKA行列を計算（隣接層のみ）
         n = len(feat_t)
         cka_mat = np.zeros((n-1,))
@@ -57,6 +54,12 @@ class CKAMapper(nn.Module):
 
     def forward(self, feat_s, feat_t):
         # 各グループごとに特徴マップリストを返す
+        # s_group_feats = [
+        #     [feat_s[0], feat_s[1]],  # グループ1
+        #     [feat_s[2], feat_s[3]],  # グループ2
+        #     [feat_s[4], feat_s[5]],  # グループ3
+        #     [feat_s[6], feat_s[7]],  # グループ4
+        # ]
         s_group_feats = [[feat_s[i] for i in idxs] for idxs in self.s_groups]
         t_group_feats = [[feat_t[i] for i in idxs] for idxs in self.t_groups]
         return s_group_feats, t_group_feats

@@ -13,24 +13,35 @@ class CKADistillLoss(nn.Module):
     """
     CKAベースの蒸留損失関数
     ours
+    ckadと名付けた、とりあえず
     """
-    def __init__(self, group_num=4, method='mean', reduction='sum'):
+    def __init__(self, group_num=4, method_inner_group='mean', method_inter_group='mean'):
         super().__init__()
         self.group_num = group_num
-        self.method = method
-        self.reduction = reduction
+        self.method_inner_group = method_inner_group # グループ内のCKA計算方法
+        self.method_inter_group = method_inter_group # グループ間のCKA計算方法
 
     def forward(self, s_group_feats, t_group_feats):
-        # 各グループごとにCKA平均を計算し、(1-平均CKA)を損失として合計
         total_loss = 0.0
-        for s_feats, t_feats in zip(s_group_feats, t_group_feats):
-            cka_vals = []
-            for s, t in zip(s_feats, t_feats):
-                cka = linear_CKA(s, t)  # 外部CKA関数（要import or globalで用意）
-                cka_vals.append(cka)
-            mean_cka = torch.mean(torch.stack(cka_vals))
-            total_loss += (1.0 - mean_cka)
-        if self.reduction == 'mean':
-            total_loss = total_loss / self.group_num
+        
+        # グループ内のCKAを計算
+        cka_vals_inter = []
+        for s_feats, t_feats in zip(s_group_feats, t_group_feats): # 同じグループの特徴量をペアで取得
+            # あるグループについて
+            if self.method_inner_group == 'mean':
+                cka_vals_inner = []
+                # 各グループの特徴量のCKAを計算
+                for i, s in enumerate(s_feats):
+                    for j, t in enumerate(t_feats):
+                        cka = linear_CKA(s, t)
+                        loss = 1 - cka  # CKAは0から1の範囲なので、1から引くことで損失に変換
+                        cka_vals_inner.append(loss)
+                # グループ内のCKAを平均
+                mean_loss = torch.mean(torch.stack(cka_vals_inner))
+                cka_vals_inter.append(mean_loss)
+
+        # グループ間のCKAを計算
+        if self.method_inter_group == 'mean':
+            total_loss = torch.mean(torch.stack(cka_vals_inter))
         return total_loss
 
